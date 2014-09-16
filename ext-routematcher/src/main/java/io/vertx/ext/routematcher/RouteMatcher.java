@@ -22,6 +22,9 @@ import io.vertx.core.Handler;
 import io.vertx.core.ServiceHelper;
 import io.vertx.core.http.HttpServerRequest;
 
+import java.util.Map;
+import java.util.function.BiConsumer;
+
 /**
  * @author <a href="http://tfox.org">Tim Fox</a>
  */
@@ -34,6 +37,9 @@ public interface RouteMatcher {
 
   @Fluent
   RouteMatcher accept(HttpServerRequest request);
+
+  @Fluent
+  RouteMatcher match(HttpServerRequest request, BiConsumer<Handler<HttpServerRequest>, Map<String, String>> consumer);
 
   /**
    * Specify a handler that will be called for a matching HTTP GET
@@ -115,6 +121,9 @@ public interface RouteMatcher {
   @Fluent
   RouteMatcher all(String pattern, Handler<HttpServerRequest> handler);
 
+  @Fluent
+  RouteMatcher add(String pattern, String method, Handler<HttpServerRequest> handler);
+
   /**
    * Specify a handler that will be called for a matching HTTP GET
    * @param regex A regular expression
@@ -194,6 +203,9 @@ public interface RouteMatcher {
    */
   @Fluent
   RouteMatcher allWithRegEx(String regex, Handler<HttpServerRequest> handler);
+
+  @Fluent
+  RouteMatcher addWithRegEx(String regex, String method, Handler<HttpServerRequest> handler);
 
   /**
    * Specify a handler that will be called when no other handlers match.

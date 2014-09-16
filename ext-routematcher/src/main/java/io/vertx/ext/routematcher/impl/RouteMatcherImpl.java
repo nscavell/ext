@@ -21,11 +21,13 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.ext.routematcher.RouteMatcher;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -67,37 +69,44 @@ public class RouteMatcherImpl implements RouteMatcher {
 
   @Override
   public RouteMatcher accept(HttpServerRequest request) {
-    switch (request.method()) {
-      case "GET":
-        route(request, getBindings);
-        break;
-      case "PUT":
-        route(request, putBindings);
-        break;
-      case "POST":
-        route(request, postBindings);
-        break;
-      case "DELETE":
-        route(request, deleteBindings);
-        break;
-      case "OPTIONS":
-        route(request, optionsBindings);
-        break;
-      case "HEAD":
-        route(request, headBindings);
-        break;
-      case "TRACE":
-        route(request, traceBindings);
-        break;
-      case "PATCH":
-        route(request, patchBindings);
-        break;
-      case "CONNECT":
-        route(request, connectBindings);
-        break;
-      default:
-        notFound(request);
+    List<PatternBinding> bindings = getPatternBindings(request.method());
+    if (bindings.isEmpty()) {
+      notFound(request);
+    } else {
+      route(request, bindings);
     }
+    return this;
+  }
+
+  @Override
+  public RouteMatcher match(HttpServerRequest request, BiConsumer<Handler<HttpServerRequest>, Map<String, String>> consumer) {
+    List<PatternBinding> bindings = getPatternBindings(request.method());
+
+    //TODO: Clean this up, a lot of dupe logic here and in accept/route
+    boolean found = false;
+    for (PatternBinding binding : bindings) {
+      Matcher m = binding.pattern.matcher(request.path());
+      if (m.matches()) {
+        Map<String, String> params = new HashMap<>(m.groupCount());
+        if (binding.paramNames != null) {
+          // Named params
+          for (String param: binding.paramNames) {
+            params.put(param, m.group(param));
+          }
+        } else {
+          // Un-named params
+          for (int i = 0; i < m.groupCount(); i++) {
+            params.put("param" + i, m.group(i + 1));
+          }
+        }
+        found = true;
+        consumer.accept(binding.handler, params);
+      }
+    }
+    if (!found) {
+      consumer.accept(noMatchHandler, Collections.emptyMap());
+    }
+
     return this;
   }
 
@@ -219,6 +228,12 @@ public class RouteMatcherImpl implements RouteMatcher {
     return this;
   }
 
+  @Override
+  public RouteMatcher add(String pattern, String method, Handler<HttpServerRequest> handler) {
+    addPattern(pattern, handler, getPatternBindings(method));
+    return this;
+  }
+
   /**
    * Specify a handler that will be called for a matching HTTP GET
    * @param regex A regular expression
@@ -337,6 +352,12 @@ public class RouteMatcherImpl implements RouteMatcher {
     return this;
   }
 
+  @Override
+  public RouteMatcher addWithRegEx(String regex, String method, Handler<HttpServerRequest> handler) {
+    addRegEx(regex, handler, getPatternBindings(method));
+    return this;
+  }
+
   /**
    * Specify a handler that will be called when no other handlers match.
    * If this handler is not specified default behaviour is to return a 404
@@ -403,6 +424,42 @@ public class RouteMatcherImpl implements RouteMatcher {
       request.response().setStatusCode(404);
       request.response().end();
     }
+  }
+
+  private List<PatternBinding> getPatternBindings(String httpMethod) {
+    List<PatternBinding> bindings;
+    switch (httpMethod) {
+      case "GET":
+        bindings = getBindings;
+        break;
+      case "PUT":
+        bindings = putBindings;
+        break;
+      case "POST":
+        bindings = postBindings;
+        break;
+      case "DELETE":
+        bindings = deleteBindings;
+        break;
+      case "OPTIONS":
+        bindings = optionsBindings;
+        break;
+      case "HEAD":
+        bindings = headBindings;
+        break;
+      case "TRACE":
+        bindings = traceBindings;
+        break;
+      case "PATCH":
+        bindings = patchBindings;
+        break;
+      case "CONNECT":
+        bindings = connectBindings;
+        break;
+      default:
+        bindings = Collections.emptyList();
+    }
+    return bindings;
   }
 
   private static class PatternBinding {
